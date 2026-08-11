@@ -55,7 +55,11 @@ export function renderSearchResults(
   query: string,
   format: ResponseFormat,
 ): SearchRendering {
-  let files = page.items;
+  // Defensive title bound: the scanner clamps titles too, but the size
+  // guarantee below must hold regardless of where the data came from.
+  let files = page.items.map((f) =>
+    f.title.length > 300 ? { ...f, title: `${f.title.slice(0, 300)}…` } : f,
+  );
   let truncated = false;
 
   const build = (): SearchRendering => {
@@ -102,10 +106,17 @@ export function renderSearchResults(
     truncated = true;
     rendering = build();
   }
-  if (rendering.text.length > CHARACTER_LIMIT && files.length === 1) {
-    const f = files[0];
-    const s = f.snippets[0];
-    files = [{ ...f, snippets: [{ line: s.line, text: s.text.slice(0, Math.max(100, CHARACTER_LIMIT - 1000)) }] }];
+  // Final backstop: halve the last remaining snippet until the rendered text
+  // fits. Measuring the built text (not the raw snippet) also accounts for
+  // JSON escaping overhead and long metadata fields.
+  while (
+    rendering.text.length > CHARACTER_LIMIT &&
+    files.length === 1 &&
+    files[0].snippets.length > 0 &&
+    files[0].snippets[0].text.length > 100
+  ) {
+    const s = files[0].snippets[0];
+    files = [{ ...files[0], snippets: [{ line: s.line, text: s.text.slice(0, Math.floor(s.text.length / 2)) }] }];
     truncated = true;
     rendering = build();
   }

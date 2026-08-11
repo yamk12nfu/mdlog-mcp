@@ -85,6 +85,14 @@ test("responses that fit are returned untouched", () => {
   assert.equal(output.next_offset, undefined);
 });
 
+test("oversized titles cannot push the response over the limit", () => {
+  const file = { ...makeFile(0, 100), title: "T".repeat(30_000) };
+  for (const format of [ResponseFormat.MARKDOWN, ResponseFormat.JSON]) {
+    const { text } = renderSearchResults(makePage([file], 1, 0), "q", format);
+    assert.ok(text.length <= CHARACTER_LIMIT, `${format}: ${text.length} exceeds limit`);
+  }
+});
+
 test("json format applies the same truncation accounting", () => {
   const files = Array.from({ length: 10 }, (_, i) => makeFile(i, 4000));
   const page = makePage(files, 12, 0);

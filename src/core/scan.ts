@@ -17,6 +17,8 @@ export interface LogEntry {
 
 const DATE_IN_FILENAME = /^(\d{4}-\d{2}-\d{2})[-_](.+)\.md$/;
 const SKIP_DIRS = new Set(["node_modules", "dist"]);
+// Titles feed size-limited tool responses, so they must be bounded.
+const TITLE_MAX_CHARS = 300;
 
 // Title extraction reads file contents, so cache by mtime to keep
 // repeated list/overview calls cheap while staying fresh as logs grow.
@@ -36,7 +38,7 @@ function extractTitle(absPath: string, fallback: string): string {
   try {
     const content = readFileSync(absPath, "utf8");
     const match = content.match(/^#\s+(.+)$/m);
-    if (match) title = match[1].trim();
+    if (match) title = match[1].trim().slice(0, TITLE_MAX_CHARS);
   } catch {
     // unreadable file: keep fallback
   }
