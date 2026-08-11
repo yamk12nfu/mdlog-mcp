@@ -1,0 +1,44 @@
+schema_version: 1
+
+project:
+  name: "mdlog-mcp"
+  type: "generic"
+  risk_level: "medium"
+  owner: "unknown"
+
+runtime:
+  devcontainer: null
+
+commands:
+  setup: ""
+  lint: ""
+  typecheck: ""
+  test: ""
+  build: ""
+
+quality_gates:
+  required:
+    - lint
+    - test
+
+ai:
+  max_loops: 4
+  max_changed_files: 10
+  allowed_paths:
+    - "src/**"
+    - "tests/**"
+    - "docs/**"
+    - ".ai/local/knowledge/**"
+    - ".ai/local/proposals/**"
+  forbidden_paths:
+    - ".env"
+    - "secrets/**"
+    - "infra/prod/**"
+    - ".github/workflows/**"
+
+review:
+  create_pr: true
+  require_human_review: true
+  auto_merge: false
+
+evals: {}
