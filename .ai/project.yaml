@@ -2,24 +2,25 @@ schema_version: 1
 
 project:
   name: "mdlog-mcp"
-  type: "generic"
+  type: "node"
   risk_level: "medium"
-  owner: "unknown"
+  owner: "yamk12nfu"
 
 runtime:
   devcontainer: null
 
 commands:
-  setup: ""
-  lint: ""
-  typecheck: ""
-  test: ""
-  build: ""
+  setup: "npm ci"
+  lint: "" # lint 未整備。導入したら required にも戻す
+  typecheck: "npx tsc --noEmit"
+  test: "npm test"
+  build: "npm run build"
 
 quality_gates:
   required:
-    - lint
+    - typecheck
     - test
+    - build
 
 ai:
   max_loops: 4
@@ -28,6 +29,7 @@ ai:
     - "src/**"
     - "tests/**"
     - "docs/**"
+    - "README.md" # プロジェクト概要（root 直下は glob でなく個別ファイルで列挙する）
     - ".ai/local/knowledge/**"
     - ".ai/local/proposals/**"
   forbidden_paths:
