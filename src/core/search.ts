@@ -51,17 +51,20 @@ export function searchEntries(
     const snippets: Snippet[] = [];
     let lastEnd = -1;
     for (const lineIdx of matchingLines) {
-      if (snippets.length >= maxSnippetsPerFile) break;
       const start = Math.max(0, lineIdx - contextLines);
       const end = Math.min(lines.length - 1, lineIdx + contextLines);
-      if (start <= lastEnd && snippets.length > 0) {
-        // Extend the previous snippet instead of emitting an overlapping one
-        const prev = snippets[snippets.length - 1];
-        const prevStart = prev.line - 1;
-        prev.text = lines.slice(prevStart, end + 1).join("\n");
-        lastEnd = end;
+      // Extend the previous snippet instead of emitting an overlapping one.
+      // Overlap extension must run even at the snippet cap, or a match that
+      // continues the last snippet would be silently dropped.
+      if (snippets.length > 0 && start <= lastEnd) {
+        if (end > lastEnd) {
+          const prev = snippets[snippets.length - 1];
+          prev.text = lines.slice(prev.line - 1, end + 1).join("\n");
+          lastEnd = end;
+        }
         continue;
       }
+      if (snippets.length >= maxSnippetsPerFile) break;
       snippets.push({ line: start + 1, text: lines.slice(start, end + 1).join("\n") });
       lastEnd = end;
     }

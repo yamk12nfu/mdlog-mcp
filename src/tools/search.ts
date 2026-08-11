@@ -2,8 +2,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { CHARACTER_LIMIT } from "../constants.js";
 import { filterEntries, scanEntries } from "../core/scan.js";
-import { searchEntries } from "../core/search.js";
-import { errorResult, paginate } from "../respond.js";
+import { searchEntries, type Snippet } from "../core/search.js";
+import { errorResult, paginate, type Page } from "../respond.js";
 import { dateString, ResponseFormat, responseFormat } from "../schemas.js";
 
 const SearchInput = {
@@ -21,6 +21,96 @@ const SearchInput = {
   offset: z.number().int().min(0).default(0).describe("Number of matched files to skip for pagination"),
   response_format: responseFormat,
 };
+
+export interface SearchFileOutput {
+  date: string;
+  slug: string;
+  title: string;
+  path: string;
+  match_count: number;
+  snippets: Snippet[];
+}
+
+export interface SearchRendering {
+  text: string;
+  output: {
+    total: number;
+    count: number;
+    offset: number;
+    has_more: boolean;
+    next_offset?: number;
+    truncated?: boolean;
+    files: SearchFileOutput[];
+  };
+}
+
+/**
+ * Build the text and structured output for one page of search results,
+ * shrinking the page until it fits CHARACTER_LIMIT. Pagination metadata is
+ * derived from the files actually shown, so anything dropped by truncation
+ * remains reachable via next_offset.
+ */
+export function renderSearchResults(
+  page: Page<SearchFileOutput>,
+  query: string,
+  format: ResponseFormat,
+): SearchRendering {
+  let files = page.items;
+  let truncated = false;
+
+  const build = (): SearchRendering => {
+    const shown = files.length;
+    const hasMore = page.has_more || shown < page.count;
+    const output: SearchRendering["output"] = {
+      total: page.total,
+      count: shown,
+      offset: page.offset,
+      has_more: hasMore,
+      ...(hasMore ? { next_offset: page.offset + shown } : {}),
+      ...(truncated ? { truncated: true } : {}),
+      files,
+    };
+    if (format === ResponseFormat.JSON) {
+      return { text: JSON.stringify(output, null, 2), output };
+    }
+    const lines = [
+      `# Search results for '${query}' (${page.total} files matched, showing ${shown} from offset ${page.offset})`,
+    ];
+    for (const f of files) {
+      lines.push("", `## ${f.date} ${f.slug} — ${f.title}`, `path: \`${f.path}\` (${f.match_count} matching lines)`);
+      for (const s of f.snippets) {
+        lines.push("", `L${s.line}:`, "```", s.text, "```");
+      }
+    }
+    if (truncated) {
+      lines.push("", "Response was truncated to fit size limits. Narrow the query or lower limit/context_lines.");
+      if (hasMore) lines.push(`Remaining results are available from offset=${output.next_offset}.`);
+    } else if (hasMore) {
+      lines.push("", `More files available: call again with offset=${output.next_offset}.`);
+    }
+    return { text: lines.join("\n"), output };
+  };
+
+  let rendering = build();
+  while (rendering.text.length > CHARACTER_LIMIT && files.length > 1) {
+    files = files.slice(0, Math.ceil(files.length / 2));
+    truncated = true;
+    rendering = build();
+  }
+  while (rendering.text.length > CHARACTER_LIMIT && files.length === 1 && files[0].snippets.length > 1) {
+    files = [{ ...files[0], snippets: files[0].snippets.slice(0, Math.ceil(files[0].snippets.length / 2)) }];
+    truncated = true;
+    rendering = build();
+  }
+  if (rendering.text.length > CHARACTER_LIMIT && files.length === 1) {
+    const f = files[0];
+    const s = f.snippets[0];
+    files = [{ ...f, snippets: [{ line: s.line, text: s.text.slice(0, Math.max(100, CHARACTER_LIMIT - 1000)) }] }];
+    truncated = true;
+    rendering = build();
+  }
+  return rendering;
+}
 
 export function registerSearch(server: McpServer, root: string): void {
   server.registerTool(
@@ -83,50 +173,19 @@ Returns: matched files [{date, slug, title, path, match_count, snippets: [{line,
       }
 
       const page = paginate(matches, params.limit, params.offset);
-      const toFileOutput = (m: (typeof matches)[number]) => ({
-        date: m.entry.date,
-        slug: m.entry.slug,
-        title: m.entry.title,
-        path: m.entry.path,
-        match_count: m.match_count,
-        snippets: m.snippets,
-      });
-
-      let files = page.items.map(toFileOutput);
-      let truncated = false;
-      const buildOutput = () => ({
-        total: page.total,
-        count: files.length,
-        offset: page.offset,
-        has_more: page.has_more || truncated,
-        ...(page.next_offset !== undefined ? { next_offset: page.next_offset } : {}),
-        ...(truncated ? { truncated: true } : {}),
-        files,
-      });
-      const buildText = (): string => {
-        if (params.response_format === ResponseFormat.JSON) return JSON.stringify(buildOutput(), null, 2);
-        const lines = [
-          `# Search results for '${params.query}' (${page.total} files matched, showing ${files.length} from offset ${page.offset})`,
-        ];
-        for (const f of files) {
-          lines.push("", `## ${f.date} ${f.slug} — ${f.title}`, `path: \`${f.path}\` (${f.match_count} matching lines)`);
-          for (const s of f.snippets) {
-            lines.push("", `L${s.line}:`, "```", s.text, "```");
-          }
-        }
-        if (truncated) lines.push("", "Response was truncated to fit size limits. Narrow the query or lower limit/context_lines.");
-        else if (page.has_more) lines.push("", `More files available: call again with offset=${page.next_offset}.`);
-        return lines.join("\n");
+      const filePage: Page<SearchFileOutput> = {
+        ...page,
+        items: page.items.map((m) => ({
+          date: m.entry.date,
+          slug: m.entry.slug,
+          title: m.entry.title,
+          path: m.entry.path,
+          match_count: m.match_count,
+          snippets: m.snippets,
+        })),
       };
-
-      let text = buildText();
-      while (text.length > CHARACTER_LIMIT && files.length > 1) {
-        files = files.slice(0, Math.ceil(files.length / 2));
-        truncated = true;
-        text = buildText();
-      }
-
-      return { content: [{ type: "text", text }], structuredContent: buildOutput() };
+      const { text, output } = renderSearchResults(filePage, params.query, params.response_format);
+      return { content: [{ type: "text" as const, text }], structuredContent: output };
     },
   );
 }

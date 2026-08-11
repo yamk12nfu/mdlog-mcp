@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { resolveEntryPath } from "../core/scan.js";
+import { isKnownEntry, resolveEntryPath } from "../core/scan.js";
 import { errorResult } from "../respond.js";
 
 const GetInput = {
@@ -44,6 +44,13 @@ Returns: the entry content plus metadata {path, total_chars, offset, returned_ch
         absPath = resolveEntryPath(root, params.path);
       } catch (error) {
         return errorResult(error instanceof Error ? error.message : String(error));
+      }
+      // Only dated entries the scanner reports are readable; undated markdown
+      // under the root stays outside the advertised corpus.
+      if (!isKnownEntry(root, params.path)) {
+        return errorResult(
+          `Not a log entry: ${params.path}. Use mdlog_list_entries or mdlog_search to find valid paths.`,
+        );
       }
 
       let content: string;
