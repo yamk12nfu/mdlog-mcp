@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../managed/schemas/knowledge.schema.json
+schema_version: 1
+entries:
+  - id: product-overview
+    document: product-overview.md
+    verified_at_commit: 0e56b8ca1581155b3746a4438be460bebbd78d69
+    sources:
+      - path: README.md
+      - path: package.json
