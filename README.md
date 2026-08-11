@@ -44,7 +44,7 @@ Requires Node.js >= 20.
 ### Claude Code
 
 ```bash
-claude mcp add --scope user mdlog -- npx -y mdlog-mcp --dir /path/to/your/logs
+claude mcp add --scope user mdlog -- npx -y @yamk12nfu/mdlog-mcp --dir /path/to/your/logs
 ```
 
 Or from a local checkout:
@@ -61,7 +61,7 @@ claude mcp add --scope user mdlog -- node /path/to/mdlog-mcp/dist/index.js --dir
   "mcpServers": {
     "mdlog": {
       "command": "npx",
-      "args": ["-y", "mdlog-mcp", "--dir", "/path/to/your/logs"]
+      "args": ["-y", "@yamk12nfu/mdlog-mcp", "--dir", "/path/to/your/logs"]
     }
   }
 }

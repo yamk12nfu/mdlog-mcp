@@ -1,5 +1,5 @@
 {
-  "name": "mdlog-mcp",
+  "name": "@yamk12nfu/mdlog-mcp",
   "version": "0.1.0",
   "description": "MCP server for searching date-organized markdown logs (daily digests, journals, notes)",
   "type": "module",
