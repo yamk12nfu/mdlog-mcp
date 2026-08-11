@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DATE_RE, isValidCalendarDate } from "./core/dates.js";
 
 export enum ResponseFormat {
   MARKDOWN = "markdown",
@@ -7,7 +8,8 @@ export enum ResponseFormat {
 
 export const dateString = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format");
+  .regex(DATE_RE, "Date must be in YYYY-MM-DD format")
+  .refine(isValidCalendarDate, "Date must be a real calendar date");
 
 export const responseFormat = z
   .nativeEnum(ResponseFormat)

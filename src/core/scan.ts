@@ -1,8 +1,9 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import { DATE_RE, isValidCalendarDate } from "./dates.js";
 
 export interface LogEntry {
-  /** ISO date (YYYY-MM-DD) extracted from the filename or a parent directory */
+  /** ISO date (YYYY-MM-DD) extracted from the filename or the nearest dated directory */
   date: string;
   /** Identifier derived from the filename, e.g. "ai-web-dev-digest" */
   slug: string;
@@ -15,7 +16,6 @@ export interface LogEntry {
 }
 
 const DATE_IN_FILENAME = /^(\d{4}-\d{2}-\d{2})[-_](.+)\.md$/;
-const DATE_DIR = /^\d{4}-\d{2}-\d{2}$/;
 const SKIP_DIRS = new Set(["node_modules", "dist"]);
 
 // Title extraction reads file contents, so cache by mtime to keep
@@ -45,9 +45,12 @@ function extractTitle(absPath: string, fallback: string): string {
 }
 
 /**
- * Recursively scan `root` for markdown files that carry a date either in the
- * filename (`2026-08-10-foo.md`) or in a parent directory (`2026-08-10/foo.md`).
- * Undated markdown files are ignored. Results are sorted newest first.
+ * Recursively scan `root` for markdown files that carry a real calendar date
+ * either in the filename (`2026-08-10-foo.md`) or in a parent directory
+ * (`2026-08-10/foo.md`); the nearest dated ancestor wins. Undated markdown
+ * files are ignored. Symlinks are never followed, so entries cannot point
+ * outside the root and link cycles cannot cause infinite recursion.
+ * Results are sorted newest first.
  */
 export function scanEntries(root: string): LogEntry[] {
   const entries: LogEntry[] = [];
@@ -64,10 +67,11 @@ export function scanEntries(root: string): LogEntry[] {
       const abs = path.join(dir, name);
       let stat;
       try {
-        stat = statSync(abs);
+        stat = lstatSync(abs);
       } catch {
         continue;
       }
+      if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory()) {
         if (SKIP_DIRS.has(name)) continue;
         walk(abs, [...relSegments, name]);
@@ -79,19 +83,21 @@ export function scanEntries(root: string): LogEntry[] {
       let slug: string | undefined;
 
       const fileMatch = name.match(DATE_IN_FILENAME);
-      if (fileMatch) {
+      if (fileMatch && isValidCalendarDate(fileMatch[1])) {
         date = fileMatch[1];
         slug = fileMatch[2];
       } else {
-        const dateSegment = relSegments.find((seg) => DATE_DIR.test(seg));
-        if (dateSegment) {
-          date = dateSegment;
-          slug = name.replace(/\.md$/, "");
+        for (let i = relSegments.length - 1; i >= 0; i--) {
+          if (isValidCalendarDate(relSegments[i])) {
+            date = relSegments[i];
+            slug = name.replace(/\.md$/, "");
+            break;
+          }
         }
       }
       if (!date || !slug) continue;
 
-      const category = relSegments.filter((seg) => !DATE_DIR.test(seg)).join("/");
+      const category = relSegments.filter((seg) => !DATE_RE.test(seg)).join("/");
       entries.push({
         date,
         slug,
@@ -124,15 +130,35 @@ export function filterEntries(entries: LogEntry[], filter: EntryFilter): LogEntr
   });
 }
 
-/** Resolve a client-supplied relative path, rejecting escapes from the root. */
+/** True when relPath is one of the entries scanEntries would return. */
+export function isKnownEntry(root: string, relPath: string): boolean {
+  const normalized = path.normalize(relPath);
+  return scanEntries(root).some((e) => path.normalize(e.path) === normalized);
+}
+
+/**
+ * Resolve a client-supplied relative path, rejecting escapes from the root.
+ * Containment is enforced on the real path, so symlinks pointing outside the
+ * root are rejected even though they sit lexically inside it.
+ */
 export function resolveEntryPath(root: string, relPath: string): string {
-  const abs = path.resolve(root, relPath);
-  const normalizedRoot = path.resolve(root) + path.sep;
-  if (!abs.startsWith(normalizedRoot)) {
+  const rootReal = realpathSync(path.resolve(root));
+  const abs = path.resolve(rootReal, relPath);
+  const prefix = rootReal + path.sep;
+  if (!abs.startsWith(prefix)) {
     throw new Error(`Path escapes the log directory: ${relPath}`);
   }
   if (!abs.endsWith(".md")) {
     throw new Error(`Only .md files can be read: ${relPath}`);
   }
-  return abs;
+  let real: string;
+  try {
+    real = realpathSync(abs);
+  } catch {
+    throw new Error(`Entry not found: ${relPath}`);
+  }
+  if (!real.startsWith(prefix)) {
+    throw new Error(`Path escapes the log directory: ${relPath}`);
+  }
+  return real;
 }

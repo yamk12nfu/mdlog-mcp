@@ -18,10 +18,11 @@ logs/
     └── 2026-08-10-weekly-review.md        # works in subdirectories too
 ```
 
-- **date**: `YYYY-MM-DD` from the filename prefix or the nearest dated directory
+- **date**: `YYYY-MM-DD` from the filename prefix or the nearest dated directory (must be a real calendar date)
 - **slug**: the rest of the filename (e.g. `ai-web-dev-digest`) — acts as the entry type
 - **category**: the subdirectory (e.g. `weekly`), with date directories stripped
-- Undated markdown files are ignored
+- Undated markdown files are ignored and cannot be read through the tools
+- Symlinks inside the directory are never followed
 
 ## Tools
 
@@ -38,7 +39,7 @@ Every tool supports `response_format: "markdown" | "json"` (where applicable) an
 
 ## Setup
 
-Requires Node.js >= 18.
+Requires Node.js >= 20.
 
 ### Claude Code
 
@@ -81,6 +82,7 @@ Once connected, ask your agent:
 ```bash
 npm install
 npm run build       # compile to dist/
+npm run test        # run the test suite (node:test via tsx)
 npm run dev         # run from src/ with tsx
 node dist/index.js --dir ./sample-logs
 ```
